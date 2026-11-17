@@ -1,0 +1,47 @@
+# Local Vivado project, generated products, reports and tool cache
+/build/
+/temp/
+/reports/
+/MathWorks/
+/.Xil/
+/.cache/
+
+# IP source of truth: configuration / core containers only.
+# Descend into directories so the exceptions also match nested IPs.
+/ip/**
+!/ip/**/
+!/ip/**/*.xci
+!/ip/**/*.xcix
+
+# Simulation / synthesis output (keep data/*.mem and data/*.coe)
+*.log
+*.jou
+*.backup.*
+*.wdb
+*.wcfg
+*.vcd
+*.fst
+*.dcp
+*.bit
+*.bin
+*.ltx
+*.str
+*.pb
+*.rpt
+*.xpr
+*.xsim
+/xsim.dir/
+/matlab/validation_report.txt
+
+# Editor / OS files and local credentials
+/.vscode/
+/.idea/
+Thumbs.db
+.DS_Store
+*.swp
+*.swo
+*~
+.env
+.env.*
+*.pem
+*.key

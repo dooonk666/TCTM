@@ -1,0 +1,17 @@
+# Store text consistently; Windows launchers keep Windows line endings.
+* text=auto
+*.v text eol=lf
+*.vh text eol=lf
+*.sv text eol=lf
+*.vhd text eol=lf
+*.xdc text eol=lf
+*.tcl text eol=lf
+*.xci text eol=lf
+*.coe text eol=lf
+*.mem text eol=lf
+*.m text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.xcix binary
