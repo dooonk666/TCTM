@@ -17,9 +17,8 @@ module telecommand_deframer #(
 ) (
     input  wire         clk,
     input  wire         rst,
-
-    input  wire         rx_valid_i,
-    input  wire [7:0]   rx_data_i,
+    input  wire         symbol_valid_i,
+    input  wire signed [21:0] symbol_data_i,
     output wire         rx_ready_o,
 
     output reg          frame_valid_o,
@@ -32,7 +31,12 @@ module telecommand_deframer #(
 
     output reg          frame_error_o,
     // 1: 地址错误；2: 格式字节错误；3: 帧结束字错误
-    output reg  [2:0]   frame_error_code_o
+    output reg  [2:0]   frame_error_code_o,
+
+    // One pulse for each search-state run reaching 48 consecutive 55 bytes.
+    // A work-period marker upstream is needed to distinguish an equally long idle.
+    output reg          preamble_valid_o,
+    output reg  [5:0]    preamble_bytes_o
 );
 
     localparam [2:0] ST_SEARCH = 3'd0;
@@ -51,13 +55,56 @@ module telecommand_deframer #(
     reg [2:0]  addr_count;
     reg [2:0]  tail_count;
     reg [63:0] tail_shift;
+    reg [8:0]  alternating_count;
+    reg        previous_bit;
+    // 本测试约定：正电平表示 1，负电平表示 0。
+    // 因此积分结果 >= 0 判为 1，< 0 判为 0。
+    wire bit_data;
+    assign bit_data = ~symbol_data_i[21];
 
-    wire accept_byte = rx_valid_i && rx_ready_o;
-    wire [15:0] sync_candidate = {sync_shift[7:0], rx_data_i};
-    wire [15:0] sync_xor = sync_candidate ^ 16'hEB90;
-    wire sync_is_valid = (sync_xor == 16'h0000) || (sync_xor == 16'hFFFF);
+    reg [7:0] symbol_shift;
+    reg [2:0] symbol_bit_count;
+
+    wire [7:0] rx_data_i;
+    wire rx_valid_i;
+
+    // 当前 bit_data 加进来之后得到的 8 位数据。
+    // 发送端必须按 MSB first，即每字节高位先发送。
+    assign rx_data_i = {symbol_shift[6:0],bit_data};
+    assign rx_valid_i = symbol_valid_i && (symbol_bit_count == 3'd7);
 
     assign rx_ready_o = (state != ST_HOLD);
+
+    wire accept_byte;
+    assign accept_byte = rx_valid_i && rx_ready_o;
+
+    // 搜索同步头时，每收到一个有效比特，都检查最近的 16 位。
+    wire [15:0] sync_candidate;
+    wire [15:0] sync_xor;
+    wire        sync_is_valid;
+
+    assign sync_candidate = {sync_shift[14:0], bit_data};
+    assign sync_xor       = sync_candidate ^ 16'hEB90;
+    assign sync_is_valid  = (sync_xor == 16'h0000) || (sync_xor == 16'hFFFF);
+
+    always@(posedge clk or posedge rst) begin
+        if(rst) begin
+            symbol_shift <= 8'd0;
+            symbol_bit_count <= 3'd0;
+        end
+        else if(state == ST_HOLD) begin
+            symbol_shift <= 8'd0;
+            symbol_bit_count <= 3'd0;
+        end
+        else if(symbol_valid_i) begin
+            symbol_shift <= rx_data_i;
+            // 当前比特是同步头的最后一位。
+            // 从下一个比特开始，重新数地址字段的 8 位。
+            if(state == ST_SEARCH && sync_is_valid) symbol_bit_count <= 3'd0;
+            else if(symbol_bit_count == 3'd7) symbol_bit_count <= 3'd0;
+            else symbol_bit_count <= symbol_bit_count + 3'd1;
+        end
+    end
 
     // 3.1.1 直控：72 bit；3.1.2 间接遥控：32/64/128/256/512 byte。
     function [9:0] format_to_length;
@@ -74,6 +121,40 @@ module telecommand_deframer #(
             endcase
         end
     endfunction
+
+
+
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            alternating_count <= 9'd0;
+            previous_bit      <= 1'b0;
+            preamble_valid_o  <= 1'b0;
+            preamble_bytes_o  <= 6'd0;
+        end else begin
+            preamble_valid_o <= 1'b0;
+
+            if (state != ST_SEARCH) begin
+                alternating_count <= 9'd0;
+            end else if (symbol_valid_i) begin
+                previous_bit <= bit_data;
+
+                if ((alternating_count == 9'd0) ||
+                    (bit_data == previous_bit)) begin
+                    // 第一个比特，或者交替序列被打断。
+                    alternating_count <= 9'd1;
+                    preamble_bytes_o  <= 6'd0;
+                end else if (alternating_count < 9'd384) begin
+                    alternating_count <= alternating_count + 9'd1;
+
+                    preamble_bytes_o <=
+                        (alternating_count + 9'd1) >> 3;
+
+                    if (alternating_count == 9'd383)
+                        preamble_valid_o <= 1'b1;
+                end
+            end
+        end
+    end
 
     always @(posedge clk or posedge rst) begin
         if (rst) begin
@@ -95,13 +176,17 @@ module telecommand_deframer #(
             frame_error_code_o <= 3'd0;
         end else begin
             frame_error_o <= 1'b0;
+            // 离开搜索状态后清空搜索窗口，
+            // 下次搜索时不拼接上一次同步头的残留。
+            if (state != ST_SEARCH)
+                sync_shift <= 16'd0;
 
             if (state == ST_HOLD) begin
                 if (frame_ready_i) begin
                     frame_valid_o <= 1'b0;
                     state <= ST_SEARCH;
                 end
-            end else if (accept_byte) begin
+            end else if (((state == ST_SEARCH) && symbol_valid_i) ||((state != ST_SEARCH) && accept_byte)) begin
                 case (state)
                     ST_SEARCH: begin
                         sync_shift <= sync_candidate;

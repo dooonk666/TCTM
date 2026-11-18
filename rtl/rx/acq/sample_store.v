@@ -51,7 +51,12 @@ always @(posedge clk or posedge rst) begin
         row_count <= 0;
         full_en_o <= 0;
     end else begin
-        full_en_o <= 0;
+        if (!clear_en_i && wr_en_i && (lane_count == LANES-1) &&
+            (row_count == (1<<ROW_AW)-1))
+            full_en_o <= 1'b1;
+        else
+            full_en_o <= 1'b0;
+
         if (clear_en_i) begin
             row_pack <= 0;
             lane_count <= 0;
@@ -63,7 +68,6 @@ always @(posedge clk or posedge rst) begin
                 lane_count <= 0;
                 if (row_count == (1<<ROW_AW)-1) begin
                     row_count <= 0;
-                    full_en_o <= 1;
                 end 
                 else row_count <= row_count + 1'b1;
             end 

@@ -56,9 +56,17 @@ begin
     end
     else
     begin
-        if(!config_done)
-            config_en <= 1'b1;
         if(config_en && config_ready)
+        begin
+            config_en <= 1'b0;
+            config_done <= 1'b1;
+        end
+        else if(!config_done)
+        begin
+            config_en <= 1'b1;
+            config_done <= 1'b0;
+        end
+        else
         begin
             config_en <= 1'b0;
             config_done <= 1'b1;

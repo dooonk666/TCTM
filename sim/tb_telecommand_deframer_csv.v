@@ -20,17 +20,37 @@ integer guides_seen=0, saved_guide_bytes=0;
 reg [383:0] guide_capture;
 reg [8191:0] wire_capture;
 integer source_file, result_file, bit_file, byte_file;
-integer active_id=0, nbytes, expected_code, scanned, k, b, j;
+integer active_id=0, nbytes, expected_code, scanned, k, j;
 integer row_count=0, observed_count=0, observed_error=0, byte_count=0;
 integer total_ok=0, total_errors=0, total_none=0;
 reg observed_ok=0;
-reg [15:0] saved_address;
-reg [7:0] saved_format;
-reg [9:0] saved_length;
-reg [4095:0] saved_payload;
-reg saved_inverted;
-reg [7:0] next_byte;
+integer saved_frame_id=0;
+integer capture_index;
+reg saved_frame_valid=0;
+reg [15:0] saved_sync=0;
+reg [15:0] saved_address=0;
+reg [7:0] saved_format=0;
+reg [9:0] saved_length=0;
+reg [4095:0] saved_payload=0;
+reg [63:0] saved_tail=0;
+reg saved_inverted=0;
+reg [7:0] next_byte=0;
 reg [8191:0] stimulus_path;
+// Byte zero occupies the LOW bits of payload. Reorder bytes explicitly for a
+// human-readable hex display in transmission order; do not display the raw
+// [71:0] vector as if it were already in wire order.
+wire direct_command_valid = saved_frame_valid && saved_format==8'h39;
+wire [71:0] direct_command_hex = direct_command_valid ? {
+    saved_payload[7:0], saved_payload[15:8], saved_payload[23:16],
+    saved_payload[31:24], saved_payload[39:32], saved_payload[47:40],
+    saved_payload[55:48], saved_payload[63:56], saved_payload[71:64]
+} : 72'd0;
+wire [35:0] oc_code_first = direct_command_hex[71:36];
+wire [35:0] oc_code_repeat = direct_command_hex[35:0];
+wire [7:0] payload_byte0 = saved_payload[7:0];
+wire [7:0] payload_byte1 = saved_payload[15:8];
+wire [15:0] sync_word;
+assign sync_word = dut.sync_shift; // Actual DUT search register, not a constant.
 
 telecommand_deframer dut (
     .clk(clk), .rst(rst), .rx_valid_i(rx_valid), .rx_data_i(rx_data),
@@ -84,8 +104,19 @@ always @(posedge clk) begin
         if (frame_valid && !observed_ok) begin
             observed_count=observed_count+1;
             observed_ok=1;
+            saved_frame_valid=1; saved_frame_id=active_id;
+            saved_sync=dut.sync_shift;
             saved_address=address; saved_format=format_byte;
-            saved_length=payload_length; saved_payload=payload;
+            saved_length=payload_length;
+            if (^payload_length === 1'bx || payload_length>512)
+                $fatal(1,"Invalid payload length at frame output");
+            // Only unused display padding is zeroed; all valid DUT bytes,
+            // including any X values, are copied without masking them.
+            saved_payload=0;
+            for (capture_index=0;capture_index<payload_length;capture_index=capture_index+1)
+                saved_payload[capture_index*8 +: 8]=payload[capture_index*8 +: 8];
+            for (capture_index=0;capture_index<8;capture_index=capture_index+1)
+                saved_tail[(7-capture_index)*8 +: 8]=wire_capture[(byte_count-8+capture_index)*8 +: 8];
             saved_inverted=sync_inverted;
         end
     end
@@ -106,14 +137,14 @@ task serialize_byte;
 endtask
 
 initial begin
-    stimulus_path="telecommand_stimulus.txt";
+    stimulus_path ="E:/k7_clean/temp/telecommand_csv_sim/telecommand_stimulus.txt";
     source_file=$fopen(stimulus_path,"r");
     result_file=$fopen("telecommand_rx_commands.csv","w");
     bit_file=$fopen("telecommand_tx_bits.csv","w");
     byte_file=$fopen("telecommand_rx_bytes.csv","w");
     if (!source_file || !result_file || !bit_file || !byte_file)
         $fatal(1,"Cannot open input/output files");
-    $fdisplay(result_file,"frame_id,status,error_code,address_hex,format_hex,payload_length,command_hex,sync_inverted,preamble_detected,preamble_bytes,preamble_hex,received_wire_hex");
+    $fdisplay(result_file,"frame_id,status,error_code,address_hex,format_hex,payload_length,command_hex,sync_inverted,preamble_detected,preamble_bytes,preamble_hex,received_wire_hex,sync_hex,tail_hex,decoded_frame_id,direct_command_hex");
     $fdisplay(bit_file,"frame_id,byte_index,bit_index,bit");
     $fdisplay(byte_file,"frame_id,byte_index,hex,binary");
     repeat (4) @(negedge clk);
@@ -152,6 +183,10 @@ initial begin
             for (j=0;j<saved_guide_bytes;j=j+1) $fwrite(result_file,"%02h",guide_capture[j*8 +: 8]);
         $fwrite(result_file,",");
         for (j=0;j<byte_count;j=j+1) $fwrite(result_file,"%02h",wire_capture[j*8 +: 8]);
+        if (observed_ok) begin
+            $fwrite(result_file,",%04h,%016h,%0d,",saved_sync,saved_tail,saved_frame_id);
+            if (direct_command_valid) $fwrite(result_file,"%018h",direct_command_hex);
+        end else $fwrite(result_file,",,,,");
         $fdisplay(result_file,"");
         if ((expected_code==0 && !observed_ok) ||
             (expected_code>=1 && expected_code<=3 && (observed_ok || observed_error!=expected_code)) ||

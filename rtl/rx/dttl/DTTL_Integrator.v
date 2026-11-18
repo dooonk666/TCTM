@@ -33,9 +33,20 @@ input signed [INPUT_WIDTH-1:0] data_in;
 output reg entire_en;
 output reg signed [ACC_WIDTH-1:0] entire_out;
 output reg signed [ACC_WIDTH-1:0] middle_out;
+//bram
+wire ram_en;
+wire signed [INPUT_WIDTH-1:0] middle_rd;
+
+// 保存与BRAM读出数据对应的当前样本和控制信号
+reg signed [INPUT_WIDTH-1:0] data_d;
+reg valid_d;
+reg trig_d;
+reg middle_valid_d;
+
+assign ram_en = update_en && !rst;
 
 // 环形缓存
-reg signed [INPUT_WIDTH-1:0] delay_mem [0:(1<<MEM_ADDR_WIDTH)-1];
+
 reg [MEM_ADDR_WIDTH-1:0] w_pos;
 reg [MEM_ADDR_WIDTH:0] sample_count;
 
@@ -59,10 +70,10 @@ assign middle_delay = (MODE == 2'd2) ? 10'd384 : (MODE == 2'd3) ? 10'd192 : 10'd
 // 因此 w_pos-middle_delay 对应 x(i-middle_delay) 就sap_cnt超过一半时才开始算
 assign r_pos = w_pos - middle_delay;
 // 当前样本不到middle_delay个样本时，middle_data输出0
-assign middle_data = (sample_count >= middle_delay) ? delay_mem[r_pos] : {INPUT_WIDTH{1'b0}};
+assign middle_data = middle_valid_d ? middle_rd : {INPUT_WIDTH{1'b0}};
 
 // 扩展到22位 data_in前面补符号位，middle_data前面补符号位 
-assign data_ext = {{(ACC_WIDTH-INPUT_WIDTH){data_in[INPUT_WIDTH-1]}}, data_in};
+assign data_ext = {{(ACC_WIDTH-INPUT_WIDTH){data_d[INPUT_WIDTH-1]}}, data_d};
 assign middle_ext = {{(ACC_WIDTH-INPUT_WIDTH){middle_data[INPUT_WIDTH-1]}}, middle_data};
 
 // 补到23位 防止累加溢出
@@ -73,15 +84,25 @@ assign middle_sum = {middle_acc[ACC_WIDTH-1], middle_acc} + {middle_ext[ACC_WIDT
 // Middle延迟存储 每次rst w_pos和sample_count清零 就重新开始存储
 always @(posedge clk) begin
     if(rst) begin
-        w_pos <= {MEM_ADDR_WIDTH{1'b0}};
-        sample_count <= {(MEM_ADDR_WIDTH+1){1'b0}};
+        w_pos <= 0;
+        sample_count <= 0;
+
+        data_d <= 0;
+        trig_d <= 0;
+        valid_d <= 0;
+        middle_valid_d <= 0;
     end
-    else if(update_en) begin
-        delay_mem[w_pos] <= data_in;
-        w_pos <= w_pos + 1'b1;
-        // sample_count最多到1024，超过就不再增加
-        if(sample_count < (1<<MEM_ADDR_WIDTH))
-            sample_count <= sample_count + 1'b1;
+    else begin
+        valid_d <= update_en;
+        trig_d <= update_en && trig;
+
+        middle_valid_d <= update_en && (sample_count >= middle_delay);
+
+        if(update_en) begin
+            data_d <= data_in;
+            w_pos <= w_pos + 1'b1;
+            if(sample_count < (1<<MEM_ADDR_WIDTH)) sample_count <= sample_count + 1'b1;
+        end
     end
 end
 
@@ -91,7 +112,7 @@ always @(posedge clk) begin
     if(rst)
         entire_en <= 1'b0;
     else
-        entire_en <= update_en && trig;
+        entire_en <= valid_d && trig_d;
 end
 
 
@@ -104,9 +125,9 @@ always @(posedge clk) begin
         middle_out <= {ACC_WIDTH{1'b0}};
     end
     else begin
-        if(update_en) begin
+        if(valid_d) begin
             // 当前输入样本先进入积分，再根据NCO溢出结束当前符号
-            if(trig) begin
+            if(trig_d) begin
                 entire_out <= entire_sum;
                 middle_out <= middle_sum;
                 entire_acc <= {ACC_WIDTH{1'b0}};
@@ -119,5 +140,20 @@ always @(posedge clk) begin
         end
     end
 end
+
+
+dttl_delay_bram bram_delay(
+    .clka(clk),    // input wire clka
+    .ena(ram_en),      // input wire ena
+    .wea(1'b1),      // input wire [0 : 0] wea
+    .addra(w_pos),  // input wire [9 : 0] addra
+    .dina(data_in),    // input wire [10 : 0] dina
+        
+    .clkb(clk),    // input wire clkb
+    .enb(ram_en),      // input wire enb
+    .addrb(r_pos),  // input wire [9 : 0] addrb
+    .doutb(middle_rd)  // output wire [10 : 0] doutb
+);
+
 
 endmodule

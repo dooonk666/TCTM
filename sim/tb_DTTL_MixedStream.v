@@ -19,8 +19,19 @@ integer burst_start [0:BURSTS-1];
 integer burst_length [0:BURSTS-1];
 integer tx_symbol = 0;
 wire signed [10:0] data_in = tx_bits[tx_symbol] ? 11'sd500 : -11'sd500;
+wire tx_bit = tx_bits[tx_symbol];
+wire [2:0] tx_segment = segment[tx_symbol]; // 0=PRBS; 1..4=alternating bursts
+wire tx_symbol_start = enable && tx_sum[32];
 wire local_rst, restart, valid;
 wire signed [21:0] entire, middle;
+// Same naming and polarity as TMTC_Track_Top: symbol_out IS Entire's integral.
+wire signed [21:0] entire_out = entire;
+wire signed [21:0] middle_out = middle;
+wire signed [21:0] symbol_out = entire;
+wire symbol_out_valid = valid && !local_rst;
+wire symbol_bit = ~symbol_out[21]; // +amplitude=1, -amplitude=0 in this test
+wire signed [21:0] entire_accum = dttl.DTTL_Integrator_inst.entire_acc;
+wire signed [21:0] middle_accum = dttl.DTTL_Integrator_inst.middle_acc;
 wire [31:0] nco;
 wire [24:0] fcw;
 wire half_phase = local_rst && !rst && enable;
@@ -42,10 +53,16 @@ integer counts [0:BURSTS];
 integer errors [0:BURSTS];
 integer phase_failures [0:BURSTS];
 reg [31:0] max_distance [0:BURSTS];
-reg [31:0] phase_difference;
-reg [31:0] distance;
-integer expected_index;
-integer sid;
+reg [31:0] phase_difference=0;
+reg [31:0] distance=0;
+integer expected_index=-1;
+integer sid=0;
+reg reference_bit=0;
+reg decoded_bit=0;
+reg decision_valid=0;
+reg decision_checked=0;
+reg decision_error=0;
+reg decision_phase_bad=0;
 integer f, events, bits_file;
 integer i, b, cursor, gap;
 reg [31:0] schedule_state;
@@ -102,6 +119,10 @@ end
 
 always @(posedge clk) begin
     #1;
+    decision_valid=0;
+    decision_checked=0;
+    decision_error=0;
+    decision_phase_bad=0;
     if (enable && !rst) begin
         cycle=cycle+1;
         if (restart) begin
@@ -121,6 +142,12 @@ always @(posedge clk) begin
             // Independent TX lookup at the nominal RX interval midpoint.
             expected_index=tx_symbol-(tx_phase[31] ? 0 : 1);
             sid=expected_index>=0 ? segment[expected_index] : 0;
+            reference_bit=expected_index>=0 ? tx_bits[expected_index] : 0;
+            decoded_bit=symbol_bit;
+            decision_valid=1;
+            decision_checked=expected_index>=WARMUP && expected_index<TOTAL;
+            decision_error=decision_checked && (decoded_bit !== reference_bit);
+            decision_phase_bad=decision_checked && (distance>=32'h0ccccccd);
             $fdisplay(f,"%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d",cycle,tx_symbol,rx_symbols,expected_index,sid,entire,middle,phase_difference,fcw,expected_index>=0 ? tx_bits[expected_index] : 0,entire>=0,pulses);
             if (expected_index>=WARMUP && expected_index<TOTAL) begin
                 checked=checked+1;

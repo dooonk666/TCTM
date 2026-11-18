@@ -143,3 +143,4 @@ add_files -norecurse -fileset sim_1 [file join $root {sim/tb_DTTL_PD_Saturation.
 # Standalone telecommand deframer and its testbench.
 add_files -norecurse -fileset sources_1 [file join $root {rtl/rx/telecommand_deframer.v}]
 add_files -norecurse -fileset sim_1 [file join $root {sim/tb_telecommand_deframer.v}]
+add_files -norecurse -fileset sim_1 [file join $root {sim/tb_telecommand_deframer_csv.v}]

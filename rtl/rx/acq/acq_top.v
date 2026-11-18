@@ -495,8 +495,8 @@ acq_statistics_v2 #(
     .code_o(stat_code),
     .bin_o(stat_bin),
     .sum_o(stat_sum),
-    .dbg_par_product_o(dbg_par_product_o),
-    .dbg_sum_pipe_o(dbg_sum_pipe_o)
+    // .dbg_par_product_o(dbg_par_product_o),
+    // .dbg_sum_pipe_o(dbg_sum_pipe_o)
 );
 
 endmodule

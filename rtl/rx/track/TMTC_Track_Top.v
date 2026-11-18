@@ -259,5 +259,35 @@ DTTL_Top DTTL(
     .NCO_out(dttl_nco_out),
     .trig(dttl_trig)
 );
+wire        decoded_frame_valid;
+wire [15:0] decoded_address;
+wire [7:0]  decoded_format;
+wire [9:0]  decoded_length;
+wire [4095:0] decoded_payload;
+
+telecommand_deframer u_deframer (
+    .clk                (clk),
+    .rst                (rst | dttl_rst),
+
+    .symbol_valid_i     (symbol_out_valid),
+    .symbol_data_i      (symbol_out),
+
+    .rx_ready_o         (),
+
+    // 当前测试先保持可以接收解帧结果。
+    .frame_ready_i      (1'b1),
+    .frame_valid_o      (decoded_frame_valid),
+    .frame_address_o    (decoded_address),
+    .frame_format_o     (decoded_format),
+    .payload_length_o   (decoded_length),
+    .payload_data_o     (decoded_payload),
+
+    .sync_inverted_o    (),
+    .frame_error_o      (),
+    .frame_error_code_o (),
+    .preamble_valid_o   (),
+    .preamble_bytes_o   ()
+);
+
 
 endmodule

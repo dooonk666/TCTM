@@ -79,6 +79,48 @@ mult_8x8 u_mult_q_square (
     .P   (pair_q_square)
 );
 
+// Pipeline-valid strobes are registered independently with one assignment on
+// each mutually exclusive path.
+always @(posedge clk or posedge rst)
+begin
+    if (rst || clear_en_i)
+    begin
+        pair_add_valid <= 1'b0;
+        pair_add_last <= 1'b0;
+        pair_power_valid <= 1'b0;
+        pair_power_last <= 1'b0;
+        dout_en_o <= 1'b0;
+    end
+    else
+    begin
+        if (din_en_i && pair_flag)
+            pair_add_valid <= 1'b1;
+        else
+            pair_add_valid <= 1'b0;
+
+        if (din_en_i && pair_flag && last_en_i)
+            pair_add_last <= 1'b1;
+        else
+            pair_add_last <= 1'b0;
+
+        if (pair_valid_d[MULT_LATENCY-1])
+            pair_power_valid <= 1'b1;
+        else
+            pair_power_valid <= 1'b0;
+
+        if (pair_valid_d[MULT_LATENCY-1] &&
+            pair_last_d[MULT_LATENCY-1])
+            pair_power_last <= 1'b1;
+        else
+            pair_power_last <= 1'b0;
+
+        if (pair_power_valid && pair_power_last)
+            dout_en_o <= 1'b1;
+        else
+            dout_en_o <= 1'b0;
+    end
+end
+
 always @(posedge clk or posedge rst)
 begin
     if(rst) begin
@@ -87,16 +129,11 @@ begin
         hold_q <= 'sd0;
         pair_i_full <= 'sd0;
         pair_q_full <= 'sd0;
-        pair_add_valid <= 1'b0;
-        pair_add_last <= 1'b0;
         pair_valid_d <= {MULT_LATENCY{1'b0}};
         pair_last_d <= {MULT_LATENCY{1'b0}};
         pair_power <= 'd0;
-        pair_power_valid <= 1'b0;
-        pair_power_last <= 1'b0;
         power_sum <= 'd0;
         power_o <= 'd0;
-        dout_en_o <= 1'b0;
     end
     else if(clear_en_i)  begin
         pair_flag <= 1'b0;
@@ -104,36 +141,23 @@ begin
         hold_q <= 'sd0;
         pair_i_full <= 'sd0;
         pair_q_full <= 'sd0;
-        pair_add_valid <= 1'b0;
-        pair_add_last <= 1'b0;
         pair_valid_d <= {MULT_LATENCY{1'b0}};
         pair_last_d <= {MULT_LATENCY{1'b0}};
         pair_power <= 'd0;
-        pair_power_valid <= 1'b0;
-        pair_power_last <= 1'b0;
         power_sum <= 'd0;
-        dout_en_o <= 1'b0;
     end
     else begin
-        dout_en_o <= 1'b0;
-        pair_add_valid <= 1'b0;
-        pair_add_last <= 1'b0;
-        pair_power_valid <= 1'b0;
-        pair_power_last <= 1'b0;
         pair_valid_d <= {pair_valid_d[MULT_LATENCY-2:0], pair_add_valid};
         pair_last_d <= {pair_last_d[MULT_LATENCY-2:0], pair_add_valid && pair_add_last};
 
         if(pair_valid_d[MULT_LATENCY-1]) begin
             pair_power <= {1'b0, pair_i_square} + {1'b0, pair_q_square};
-            pair_power_valid <= 1'b1;
-            pair_power_last <= pair_last_d[MULT_LATENCY-1];
         end
 
         if(pair_power_valid) begin
             if(pair_power_last) begin
                 power_o <= power_sum + pair_power;
                 power_sum <= 'd0;
-                dout_en_o <= 1'b1;
             end
             else begin
                 power_sum <= power_sum + pair_power;
@@ -151,8 +175,6 @@ begin
                 pair_flag <= 1'b0;
                 pair_i_full <= {hold_i[COH_WID-1], hold_i} + {din_i[COH_WID-1], din_i}; //I0+I1;I2+I3
                 pair_q_full <= {hold_q[COH_WID-1], hold_q} + {din_q[COH_WID-1], din_q};
-                pair_add_valid <= 1'b1;
-                pair_add_last <= last_en_i;
             end
         end
     end

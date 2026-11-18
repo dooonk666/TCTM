@@ -35,15 +35,17 @@ begin
     end
     else
     begin
-        dout_en_o <= 1'b0;
+        if (din_en && (deci_count == 2'd0))
+        begin
+            dout_en_o <= 1'b1;
+            dout_i <= din_i;
+            dout_q <= din_q;
+        end
+        else
+            dout_en_o <= 1'b0;
+
         if (din_en)
         begin
-            if (deci_count == 2'd0)
-            begin
-                dout_en_o <= 1'b1;
-                dout_i <= din_i;
-                dout_q <= din_q;
-            end
             deci_count <= deci_count + 2'd1;
         end
     end

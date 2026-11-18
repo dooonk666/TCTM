@@ -93,7 +93,10 @@ begin
         last_s3 <= last_s2;
         bin_s3 <= bin_s2;
 
-        dout_en_o <= 1'b0;
+        if(valid_s3 && last_s3)
+            dout_en_o <= 1'b1;
+        else
+            dout_en_o <= 1'b0;
 
         if(din_en_i)
         begin
@@ -131,7 +134,6 @@ begin
 
             if(last_s3)
             begin
-                dout_en_o <= 1'b1;
                 if(magnitude_s3 > frame_peak)
                 begin
                     peak_o <= magnitude_s3;

@@ -58,6 +58,29 @@ wire signed [31:0] residual_bin_ext ={{23{residual_bin_i[8]}},residual_bin_i};
 wire signed [31:0] coarse_fcw_8x = $signed(coarse_fcw_2x_i) >>> 2;//R_8chip=2*R_4
 wire signed [31:0] residual_fcw_8x = residual_bin_ext <<< 14;
 
+// Single-cycle handoff strobes use mutually exclusive set/clear paths.
+always @(posedge clk or posedge rst)
+begin
+    if (rst)
+    begin
+        pn0_valid_o <= 1'b0;
+        tracking_fcw_valid_o <= 1'b0;
+    end
+    else
+    begin
+        if (!result_valid_d2 && pn0_armed && sample_8x_valid_i &&
+            (live_phase_8x == target_pn0_phase_8x))
+            pn0_valid_o <= 1'b1;
+        else
+            pn0_valid_o <= 1'b0;
+
+        if (result_valid_d2 && result_success_d2)
+            tracking_fcw_valid_o <= 1'b1;
+        else
+            tracking_fcw_valid_o <= 1'b0;
+    end
+end
+
 always @(posedge clk or posedge rst)
 begin
     if (rst)
@@ -74,15 +97,10 @@ begin
         result_success_d2 <= 1'b0;
         target_pn0_phase_8x <= 13'd0;
         calculated_tracking_fcw <= 32'sd0;
-        pn0_valid_o <= 1'b0;
-        tracking_fcw_valid_o <= 1'b0;
         tracking_fcw_o <= 32'sd0;
     end
     else
     begin
-        pn0_valid_o <= 1'b0;
-        tracking_fcw_valid_o <= 1'b0;
-
         result_valid_d1 <= result_valid_i;
         result_success_d1 <= result_success_i;
         result_valid_d2 <= result_valid_d1;
@@ -117,7 +135,6 @@ begin
         if (result_valid_d2)
         begin
             tracking_fcw_o <= calculated_tracking_fcw;
-            tracking_fcw_valid_o <= result_success_d2;
             if (result_success_d2)
                 pn0_armed <= 1'b1;
             else
@@ -128,7 +145,6 @@ begin
         else if (pn0_armed && sample_8x_valid_i &&
                  (live_phase_8x == target_pn0_phase_8x))
         begin
-            pn0_valid_o <= 1'b1;
             pn0_armed <= 1'b0;
         end
     end

@@ -1,5 +1,14 @@
 # K7 工程使用说明
 
+## 遥控解帧 CSV 测试
+
+编辑 `sim/data/telecommand_tx_frames.csv`，运行 `./scripts/run_telecommand_csv_sim.ps1`。
+默认已包含42个OC和5种软件方式字的47个工作期，每期携带48字节引导；
+接收侧显示引导识别和实际收到的引导内容，`telecommand_summary.csv`提供47行核对结果。
+输入为十六进制完整帧，TB 按 MSB-first 展开比特并组字节送给现有解帧器。
+输出及并排比较表位于 `temp/telecommand_csv_sim/`，详见
+[sim/README_telecommand_csv.md](sim/README_telecommand_csv.md)。
+
 仓库：<https://github.com/dooonk666/TCTM>。提交、上传、同步和换电脑克隆步骤见 [Git 操作指南](Git操作指南.md)。
 
 Git 保留 `rtl/`、`sim/`、IP 配置（`.xci/.xcix`）、`constraints/`、`data/`、`scripts/`、MATLAB 参考源码和说明文件；不上传 `build/`、`temp/`、`reports/`、`MathWorks/` 及 IP 自动生成文件。本地文件仍保留。下文引用的历史迁移报告和日志不会随克隆下载，历史综合结论不代表当前版本已经重新验证。

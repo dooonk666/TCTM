@@ -1,5 +1,9 @@
 # DTTL 连续长流：随机数据中插入长交替序列
 
+当前用户自行在Vivado查看的步骤和逐信号说明见 [README_DTTL_Vivado.md](README_DTTL_Vivado.md)。
+已增加发送比特、积分、symbol_out以及对齐判决波形。PD饱和修复后的最新长流尚未完整运行，
+此前的完整通过结果属于修复前版本；本次后台试跑已按用户要求停止。
+
 ```powershell
 ./scripts/run_dttl_supervisor_sim.ps1 -Tests tb_DTTL_MixedStream -OutputDir E:/k7_clean/temp/dttl_mixed_stream_sim
 ```
