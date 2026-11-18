@@ -14,6 +14,9 @@ module tb_telecommand_deframer;
     wire [2:0] frame_error_code;
     integer accepted_frames=0, error_count=0, last_error=0, cases_passed=0;
     reg previous_error=0;
+    wire preamble_valid;
+    wire [5:0] preamble_bytes;
+    integer preambles_seen=0;
     reg [7:0] formats [0:5];
     integer lengths [0:5];
     integer f, inv, n, old_errors, old_frames, stage;
@@ -26,7 +29,8 @@ module tb_telecommand_deframer;
         .frame_address_o(frame_address), .frame_format_o(frame_format),
         .payload_length_o(payload_length), .payload_data_o(payload_data),
         .sync_inverted_o(sync_inverted), .frame_error_o(frame_error),
-        .frame_error_code_o(frame_error_code)
+        .frame_error_code_o(frame_error_code),
+        .preamble_valid_o(preamble_valid), .preamble_bytes_o(preamble_bytes)
     );
 
     // Output handshakes are sampled BEFORE the DUT's NBA updates.
@@ -36,6 +40,7 @@ module tb_telecommand_deframer;
     // Registered errors are sampled AFTER NBA, independently of stimulus.
     always @(posedge clk) begin
         #1;
+        if (!rst && preamble_valid) preambles_seen=preambles_seen+1;
         if (rst) previous_error=0;
         else begin
             if (frame_error === 1'b1) begin
@@ -177,7 +182,11 @@ module tb_telecommand_deframer;
         formats[4]=8'hA5; lengths[4]=256;
         formats[5]=8'hC9; lengths[5]=512;
         reset_dut;
-        for (n=0; n<48; n=n+1) send_byte(8'h55); // 384-bit preamble
+        for (n=0; n<48; n=n+1) begin
+            send_byte(8'h55); // 384-bit preamble
+            if (n<47 && preambles_seen!=0) $fatal(1,"Preamble detected before 48 bytes");
+        end
+        if (preambles_seen!=1 || preamble_bytes!=48) $fatal(1,"Preamble detection failed");
         idle_cycles(2);
         if (frame_valid !== 0 || error_count != 0) $fatal(1, "preamble accepted");
         for (inv=0; inv<2; inv=inv+1)
